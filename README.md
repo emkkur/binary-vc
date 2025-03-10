@@ -1,0 +1,4 @@
+# Version Control for Large Binary Files(LBF)
+
+## Why make one customized for LBF?
+Version control now feels like it's been around since the first program was typed into a computer. It grew with programming, adjusting to new needs and getting more and more efficient along the way. Most version control used now works great with text files, but becomes less refined when it comes to binary files. Instead of storing the changes, the version control system (VCS) stores each version of the file. Doing this can quickly bulk up the version tree. This making pulls, commits and clones of reposistores with such files slow and bulky. So I am going to attempt to do that.
