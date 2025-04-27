@@ -2,13 +2,24 @@ import hashlib
 import os
 import json
 
-def rabin_karp_cdc_stream_with_bounds(file_path, output_dir, window_size=64, mask_bits=9, min_chunk=512, max_chunk=4096):
+def hash_concat_chunks(chunks_dir):
+    h = hashlib.sha256()
+    with open(os.path.join(chunks_dir, "manifest.json")) as mf:
+        manifest = json.load(mf)
+    for name in manifest:
+        with open(os.path.join(chunks_dir, name), "rb") as f:
+            h.update(f.read())
+    return h.hexdigest()
+
+
+def rabin_karp_cdc_stream_with_bounds(file_path, output_dir, window_size=64, mask_bits=13, min_chunk=2048, max_chunk=8192):
     mask = (1 << mask_bits) - 1
     base = 257
     mod = 1 << 64
 
     os.makedirs(output_dir, exist_ok=True)
     chunk_files = []
+    seq = 0
 
     with open(file_path, "rb") as f:
         buffer = f.read(window_size)
@@ -32,12 +43,12 @@ def rabin_karp_cdc_stream_with_bounds(file_path, output_dir, window_size=64, mas
 
             if len(chunk) >= min_chunk and ((h & mask) == 0 or len(chunk) >= max_chunk):
                 chunk_hash = hashlib.sha256(chunk).hexdigest()[:16]
-                chunk_name = f"chunk_{chunk_hash}.bin"
+                chunk_name = f"chunk_{seq:06d}_{chunk_hash}.bin"
                 chunk_path = os.path.join(output_dir, chunk_name)
                 with open(chunk_path, "wb") as chunk_file:
                     chunk_file.write(chunk)
-                print(f"Debug {chunk_hash} point 1")
                 chunk_files.append(chunk_name)
+                seq += 1
                 buffer = f.read(window_size)
                 if not buffer:
                     return
@@ -57,13 +68,18 @@ def rabin_karp_cdc_stream_with_bounds(file_path, output_dir, window_size=64, mas
 
         if chunk:
             chunk_hash = hashlib.sha256(chunk).hexdigest()[:16]
-            chunk_name = f"chunk_{chunk_hash}.bin"
+            chunk_name = f"chunk_{seq:06d}_{chunk_hash}.bin"
             chunk_path = os.path.join(output_dir, chunk_name)
             with open(chunk_path, "wb") as chunk_file:
                 chunk_file.write(chunk)
-            print(f"Debug {chunk_hash} point 2")
             chunk_files.append(chunk_name)
+            seq += 1
 
         manifest_path = os.path.join(output_dir, "manifest.json")
         with open(manifest_path, "w") as mf:
             json.dump(chunk_files, mf, indent=2)
+    orig_hash = hashlib.sha256(open(file_path,"rb").read()).hexdigest()
+    chunks_hash = hash_concat_chunks(output_dir)
+    print(f"Checking files at {file_path} and output at {output_dir}")
+    if (orig_hash != chunks_hash):
+        raise RuntimeError(f"Chunking failed, hash does not match {chunk_hash}, {orig_hash}")

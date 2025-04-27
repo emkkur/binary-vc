@@ -23,6 +23,6 @@ def process_files(original_file, modified_file):
     print("Done. Chunks and deltas are stored in:", working_dir)
 
 if __name__ == "__main__":
-    modified = "/Users/emilkurian/Desktop/development/binary-vc/samples/modified.jpg"
-    original = "/Users/emilkurian/Desktop/development/binary-vc/samples/original.jpg"
+    modified = "/Users/emilkurian/Desktop/development/binary-vc/samples/modified.bmp"
+    original = "/Users/emilkurian/Desktop/development/binary-vc/samples/original.bmp"
     process_files(original, modified)

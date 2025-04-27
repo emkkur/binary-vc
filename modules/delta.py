@@ -45,8 +45,12 @@ class Delta:
 
     def reconstruct_chunk(self, base_chunk_path, delta_chunk_path, output_path):
         """Reconstruct a modified chunk from a base chunk and delta file."""
-        with open(base_chunk_path, "rb") as f:
-            data = bytearray(f.read())
+        # Load base chunk if available, else start from empty for new chunks
+        try:
+            with open(base_chunk_path, "rb") as f:
+                data = bytearray(f.read())
+        except FileNotFoundError:
+            data = bytearray()
 
         with open(delta_chunk_path, "rb") as f:
             while True:
