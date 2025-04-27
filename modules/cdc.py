@@ -12,7 +12,7 @@ def hash_concat_chunks(chunks_dir):
     return h.hexdigest()
 
 
-def rabin_karp_cdc_stream_with_bounds(file_path, output_dir, window_size=64, mask_bits=13, min_chunk=2048, max_chunk=8192):
+def rabin_karp_cdc_stream_with_bounds(file_path, output_dir, window_size=64, mask_bits=15, min_chunk=8192, max_chunk=65536):
     mask = (1 << mask_bits) - 1
     base = 257
     mod = 1 << 64

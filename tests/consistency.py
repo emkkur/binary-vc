@@ -18,7 +18,12 @@ csv_file = "chunking_experiment_results.csv"
 
 # Function to extract hashes from filenames
 def extract_hashes(directory):
-    return sorted(f.split('.')[0] for f in os.listdir(directory) if f.endswith('.bin'))
+    """Extract base filenames (without extensions) for .bin and .bin.gz files."""
+    hashes = []
+    for f in os.listdir(directory):
+        if f.endswith('.bin') or f.endswith('.bin.gz'):
+            hashes.append(f.split('.')[0])
+    return sorted(hashes)
 
 # Storage for previous run's hashes
 previous_hashes_1 = None
@@ -56,11 +61,9 @@ with open(csv_file, mode='w', newline='') as file:
         # Chunk both files
         rabin_karp_cdc_stream_with_bounds(
             file1_path, cdc_dir_1,
-            mask_bits=10, min_chunk=512, max_chunk=4096
         )
         rabin_karp_cdc_stream_with_bounds(
             file2_path, cdc_dir_2,
-            mask_bits=10, min_chunk=512, max_chunk=4096
         )
 
         # Collect chunk hashes
@@ -86,10 +89,11 @@ with open(csv_file, mode='w', newline='') as file:
 
         runtime = time.time() - start_time
 
-        # Compute total delta size and compression ratio
+        # Compute total delta size and compression ratio (including .bin.gz)
         delta_sizes = [
             os.path.getsize(os.path.join(delta_dir, f))
-            for f in os.listdir(delta_dir) if f.endswith('.bin')
+            for f in os.listdir(delta_dir)
+            if f.endswith('.bin') or f.endswith('.bin.gz')
         ]
         total_delta_size = sum(delta_sizes)
         modified_size = os.path.getsize(file2_path)
