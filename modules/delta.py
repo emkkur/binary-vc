@@ -39,7 +39,7 @@ class Delta:
                     delta.append((i, m))
 
             # Determine per-byte diff overhead
-            per_edit_overhead = 4 + 1
+            per_edit_overhead = 4 + 1 # index tuple + value
             raw_size = len(mod_bytes)
             delta_overhead = len(delta) * per_edit_overhead
 
