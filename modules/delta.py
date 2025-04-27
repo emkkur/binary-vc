@@ -88,21 +88,26 @@ class Delta:
 
     def reconstruct_chunk(self, base_chunk_path, delta_chunk_path, output_path):
         """Reconstruct a modified chunk from a base chunk and delta file."""
-        # Handle compressed delta files (.gz)
+        # 1) Load base chunk if available, else start empty
+        try:
+            with open(base_chunk_path, "rb") as bf:
+                data = bytearray(bf.read())
+        except FileNotFoundError:
+            data = bytearray()
+
+        # 2) Apply delta
         if delta_chunk_path.endswith('.gz'):
-            with gzip.open(delta_chunk_path, "rb") as df:
-                content = df.read()
-            # detect mode by file prefix
+            # Compressed delta
+            content = gzip.open(delta_chunk_path, "rb").read()
             basename = os.path.basename(delta_chunk_path)
             if basename.startswith('full_'):
+                # Full chunk stored
                 data = bytearray(content)
-                with open(output_path, 'wb') as out:
-                    out.write(data)
-                return
             elif basename.startswith('run_'):
-                # apply run-length
-                num_runs = struct.unpack_from('<I', content, 0)[0]
-                offset = 4
+                # Run-length encoded
+                offset = 0
+                num_runs = struct.unpack_from('<I', content, offset)[0]
+                offset += 4
                 for _ in range(num_runs):
                     start = struct.unpack_from('<I', content, offset)[0]
                     offset += 4
@@ -113,59 +118,40 @@ class Delta:
                     if start < len(data):
                         data[start:start+length] = run_data
                     else:
-                        data.extend([0] * (start - len(data)))
+                        data.extend(b'\x00' * (start - len(data)))
                         data.extend(run_data)
-                with open(output_path, 'wb') as out:
-                    out.write(data)
-                return
             else:
-                # per-byte diffs from content
-                data_io = memoryview(content)
+                # Per-byte diffs
+                mv = memoryview(content)
                 offset = 0
-                data = bytearray(data)
-                while offset + 5 <= len(data_io):
-                    index = struct.unpack_from('<I', data_io, offset)[0]
+                while offset + 5 <= len(mv):
+                    idx = struct.unpack_from('<I', mv, offset)[0]
                     offset += 4
-                    val = data_io[offset]
+                    val = mv[offset]
                     offset += 1
-                    if index < len(data):
-                        data[index] = val
+                    if idx < len(data):
+                        data[idx] = val
                     else:
-                        data.extend([0] * (index - len(data)))
+                        data.extend(b'\x00' * (idx - len(data)))
                         data.append(val)
-                with open(output_path, 'wb') as out:
-                    out.write(data)
-                return
+        else:
+            # Uncompressed per-byte delta (.bin)
+            with open(delta_chunk_path, "rb") as df:
+                while True:
+                    idx_bytes = df.read(4)
+                    if not idx_bytes:
+                        break
+                    val_byte = df.read(1)
+                    if not val_byte:
+                        break
+                    idx = int.from_bytes(idx_bytes, 'little')
+                    val = val_byte[0]
+                    if idx < len(data):
+                        data[idx] = val
+                    else:
+                        data.extend(b'\x00' * (idx - len(data)))
+                        data.append(val)
 
-        # Full-chunk fallback: if delta file is named full_*.bin, just copy it
-        delta_basename = os.path.basename(delta_chunk_path)
-        if delta_basename.startswith("full_"):
-            with open(delta_chunk_path, "rb") as src, open(output_path, "wb") as dst:
-                dst.write(src.read())
-            return
-
-        # Load base chunk if available, else start from empty for new chunks
-        try:
-            with open(base_chunk_path, "rb") as f:
-                data = bytearray(f.read())
-        except FileNotFoundError:
-            data = bytearray()
-
-        with open(delta_chunk_path, "rb") as f:
-            while True:
-                index_bytes = f.read(4)
-                if not index_bytes:
-                    break
-                value_byte = f.read(1)
-                if not value_byte:
-                    break
-                index = int.from_bytes(index_bytes, 'little')
-                value = value_byte[0]
-                if index < len(data):
-                    data[index] = value
-                else:
-                    data.extend([0] * (index - len(data)))
-                    data.append(value)
-    
-        with open(output_path, "wb") as f:
-            f.write(data)
+        # 3) Write reconstructed chunk
+        with open(output_path, "wb") as out:
+            out.write(data)

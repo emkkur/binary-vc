@@ -2,6 +2,7 @@
 import os
 import shutil
 import json
+import gzip
 from modules.cdc import rabin_karp_cdc_stream_with_bounds
 from modules.delta import Delta
 
@@ -33,53 +34,30 @@ def reconstruct():
         manifest = json.load(mf)
 
     delta = Delta(base_chunks_dir, None, None)
-    for fn in sorted(os.listdir(DELTAS_DIR)):
-        if not fn.startswith("delta_"):
-            continue
-
-        # Determine sequence index from delta filename
+    # Process all gzip-compressed delta files, sorted by their numeric index
+    delta_files = [
+        f for f in os.listdir(DELTAS_DIR)
+        if (f.startswith("full_") or f.startswith("run_") or f.startswith("delta_"))
+           and f.endswith(".bin.gz")
+    ]
+    delta_files.sort(key=lambda fn: int(fn.split("_")[1].split(".")[0]))
+    for fn in delta_files:
         idx = int(fn.split("_")[1].split(".")[0])
         delta_path = os.path.join(DELTAS_DIR, fn)
-
+        # Determine base chunk name (or default for new chunks)
         if idx < len(manifest):
-            # Existing chunk: apply delta to the corresponding base chunk
-            base_name = manifest[idx]
-            base_path = os.path.join(base_chunks_dir, base_name)
-            out_name  = base_name
-            out_path  = os.path.join(out_chunks_dir, out_name)
-            delta.reconstruct_chunk(base_path, delta_path, out_path)
+            chunk_name = manifest[idx]
         else:
-            # New chunk beyond original: reconstruct from empty
-            out_name = f"chunk_{idx:06d}.bin"
-            out_path = os.path.join(out_chunks_dir, out_name)
-            data = bytearray()
-            with open(delta_path, "rb") as df:
-                while True:
-                    index_bytes = df.read(4)
-                    if not index_bytes:
-                        break
-                    value_byte = df.read(1)
-                    if not value_byte:
-                        break
-                    pos = int.from_bytes(index_bytes, "little")
-                    val = value_byte[0]
-                    if pos < len(data):
-                        data[pos] = val
-                    else:
-                        data.extend([0] * (pos - len(data)))
-                        data.append(val)
-            with open(out_path, "wb") as of:
-                of.write(data)
+            chunk_name = f"chunk_{idx:06d}.bin"
+        base_path = os.path.join(base_chunks_dir, chunk_name)
+        out_path = os.path.join(out_chunks_dir, chunk_name)
+        # Use Delta.reconstruct_chunk for both existing and new chunks
+        delta.reconstruct_chunk(base_path, delta_path, out_path)
 
     with open(OUTPUT_FILE, "wb") as outf:
-        # Write chunks in the exact delta sequence order
-        delta_files = sorted(
-            f for f in os.listdir(DELTAS_DIR)
-            if f.startswith("delta_") and f.endswith(".bin")
-        )
         for fn in delta_files:
             idx = int(fn.split("_")[1].split(".")[0])
-            # Determine chunk filename from manifest or default for new chunks
+            # Use the same chunk_name logic as above
             if idx < len(manifest):
                 chunk_name = manifest[idx]
             else:
