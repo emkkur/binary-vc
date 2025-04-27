@@ -36,15 +36,34 @@ class Delta:
                 if b != m:
                     delta.append((i, m))
 
-            delta_name = f"delta_{idx:06d}.bin"
-            delta_path = os.path.join(self.output_dir, delta_name)
-            with open(delta_path, "wb") as out:
-                for index, value in delta:
-                    out.write(index.to_bytes(4, "little"))
-                    out.write(bytes([value if value is not None else 0]))
+            # Fallback: if per-byte diff is larger than raw chunk, store full chunk
+            per_edit_overhead = 4 + 1  # 4-byte index + 1-byte value
+            raw_size = len(mod_bytes)
+            delta_overhead = len(delta) * per_edit_overhead
+            if delta_overhead > raw_size:
+                # Emit full chunk
+                delta_name = f"full_{idx:06d}.bin"
+                delta_path = os.path.join(self.output_dir, delta_name)
+                with open(delta_path, "wb") as out:
+                    out.write(mod_bytes)
+            else:
+                # Emit per-byte diffs
+                delta_name = f"delta_{idx:06d}.bin"
+                delta_path = os.path.join(self.output_dir, delta_name)
+                with open(delta_path, "wb") as out:
+                    for index, value in delta:
+                        out.write(index.to_bytes(4, "little"))
+                        out.write(bytes([value if value is not None else 0]))
 
     def reconstruct_chunk(self, base_chunk_path, delta_chunk_path, output_path):
         """Reconstruct a modified chunk from a base chunk and delta file."""
+        # Full-chunk fallback: if delta file is named full_*.bin, just copy it
+        delta_basename = os.path.basename(delta_chunk_path)
+        if delta_basename.startswith("full_"):
+            with open(delta_chunk_path, "rb") as src, open(output_path, "wb") as dst:
+                dst.write(src.read())
+            return
+
         # Load base chunk if available, else start from empty for new chunks
         try:
             with open(base_chunk_path, "rb") as f:
